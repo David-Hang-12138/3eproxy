@@ -782,7 +782,6 @@ int MODULEMAINFUNC(int argc, char **argv)
 
 void srvinit(struct srvparam *srv, struct clientparam *param)
 {
-
 	memset(srv, 0, sizeof(struct srvparam));
 	srv->version = conf.version + 1;
 	srv->paused = conf.paused;
@@ -802,7 +801,6 @@ void srvinit(struct srvparam *srv, struct clientparam *param)
 	srv->srvsock = INVALID_SOCKET;
 	srv->logdumpsrv = conf.logdumpsrv;
 	srv->logdumpcli = conf.logdumpcli;
-	srv->cbsock = INVALID_SOCKET;
 	srv->needuser = 1;
 #ifdef WITHSPLICE
 	srv->usesplice = 1;
@@ -858,9 +856,6 @@ void srvfree(struct srvparam *srv)
 	if (srv->srvsock != INVALID_SOCKET)
 		so._closesocket(srv->srvsock);
 	srv->srvsock = INVALID_SOCKET;
-	if (srv->cbsock != INVALID_SOCKET)
-		so._closesocket(srv->cbsock);
-	srv->cbsock = INVALID_SOCKET;
 	srv->service = S_ZOMBIE;
 	while (srv->child)
 		usleep(SLEEPTIME * 100);

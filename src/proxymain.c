@@ -17,58 +17,7 @@ void *threadfunc(void *p)
 {
 #endif
 	int i = -1;
-	if (param->srv->cbsock != INVALID_SOCKET)
-	{
-		SASIZETYPE size = sizeof(param->sinsr);
-		struct pollfd fds;
-		fds.fd = param->srv->cbsock;
-		fds.events = POLLIN;
-		fds.revents = 0;
-		for (i = 5 + (param->srv->maxchild >> 10); i; i--)
-		{
-			if (so._poll(&fds, 1, 1000 * CONNBACK_TO) != 1)
-			{
-				dolog(param, (unsigned char *)"Connect back not received, check connback client");
-				i = 0;
-				break;
-			}
-			param->remsock = so._accept(param->srv->cbsock, (struct sockaddr *)&param->sinsr, &size);
-			if (param->remsock == INVALID_SOCKET)
-			{
-				dolog(param, (unsigned char *)"Connect back accept() failed");
-				continue;
-			}
-			{
-#ifdef _WIN32
-				unsigned long ul = 1;
-				ioctlsocket(param->remsock, FIONBIO, &ul);
-#else
-				fcntl(param->remsock, F_SETFL, O_NONBLOCK | fcntl(param->remsock, F_GETFL));
-#endif
-			}
-#ifndef WITHMAIN
-			param->req = param->sinsr;
-			if (param->srv->acl)
-				param->res = checkACL(param);
-			if (param->res)
-			{
-				dolog(param, (unsigned char *)"Connect back ACL failed");
-				so._closesocket(param->remsock);
-				param->remsock = INVALID_SOCKET;
-				continue;
-			}
-#endif
-			if (socksendto(param->remsock, (struct sockaddr *)&param->sinsr, (unsigned char *)"C", 1, CONNBACK_TO * 1000) != 1)
-			{
-				dolog(param, (unsigned char *)"Connect back sending command failed");
-				so._closesocket(param->remsock);
-				param->remsock = INVALID_SOCKET;
-				continue;
-			}
 
-			break;
-		}
-	}
 	if (!i)
 	{
 		param->res = 13;

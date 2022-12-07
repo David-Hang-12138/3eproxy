@@ -25,16 +25,6 @@ void *threadfunc(void *p)
 	}
 	else
 	{
-
-#ifndef WITHMAIN
-#ifndef _WIN32
-		sigset_t mask;
-		sigfillset(&mask);
-		if (param->srv->service != S_UDPPM)
-			pthread_sigmask(SIG_SETMASK, &mask, NULL);
-#endif
-#endif
-
 		((struct clientparam *)p)->srv->pf((struct clientparam *)p);
 	}
 #ifdef _WIN32
@@ -259,40 +249,8 @@ int MODULEMAINFUNC(int argc, char **argv)
 	srv.pf = childdef.pf;
 	srv.service = defparam.service = childdef.service;
 
-#ifndef STDMAIN
-	if (conf.acl)
-	{
-		srv.acl = copyacl(conf.acl);
-		if (!srv.acl)
-			haveerror = 2;
-	}
-
-	if (conf.authfuncs)
-	{
-		srv.authfuncs = copyauth(conf.authfuncs);
-		if (!srv.authfuncs)
-			haveerror = 2;
-	}
-	if (!conf.services)
-	{
-		conf.services = &srv;
-	}
-	else
-	{
-		srv.next = conf.services;
-		conf.services = conf.services->prev = &srv;
-	}
-#ifndef _WIN32
-	{
-		sigset_t mask;
-		sigfillset(&mask);
-		pthread_sigmask(SIG_SETMASK, &mask, NULL);
-	}
-#endif
-#else
 	srv.needuser = 0;
 	pthread_mutex_init(&log_mutex, NULL);
-#endif
 
 	for (i = 1; i < argc; i++)
 	{
@@ -460,17 +418,10 @@ int MODULEMAINFUNC(int argc, char **argv)
 			break;
 	}
 
-#ifndef STDMAIN
-	if (childdef.port)
-	{
-#endif
 #ifndef PORTMAP
 		if (error || i != argc)
 		{
-#ifndef STDMAIN
-			haveerror = 1;
-			conf.threadinit = 0;
-#endif
+
 			fprintf(stderr, "%s of %s\n"
 							"Usage: %s options\n"
 							"Available options are:\n"
@@ -493,18 +444,11 @@ int MODULEMAINFUNC(int argc, char **argv)
 			return (1);
 		}
 #endif
-#ifndef STDMAIN
-	}
-	else
-	{
-#endif
+
 #ifndef NOPORTMAP
 		if (error || argc != i + 3 || *argv[i] == '-' || (*SAPORT(&srv.intsa) = htons((unsigned short)atoi(argv[i]))) == 0 || (srv.targetport = htons((unsigned short)atoi(argv[i + 2]))) == 0)
 		{
-#ifndef STDMAIN
-			haveerror = 1;
-			conf.threadinit = 0;
-#endif
+
 			fprintf(stderr, "%s of %s\n"
 							"Usage: %s options"
 							" [-e<external_ip>] <port_to_bind>"
@@ -528,10 +472,6 @@ int MODULEMAINFUNC(int argc, char **argv)
 		}
 		srv.target = (unsigned char *)mystrdup(argv[i + 1]);
 #endif
-#ifndef STDMAIN
-	}
-
-#else
 
 #ifndef _WIN32
 	if (inetd)
@@ -549,7 +489,6 @@ int MODULEMAINFUNC(int argc, char **argv)
 	}
 #endif
 
-#endif
 
 	srvinit2(&srv, &defparam);
 	if (!*SAFAMILY(&srv.intsa))
@@ -563,12 +502,6 @@ int MODULEMAINFUNC(int argc, char **argv)
 	if (hostname)
 		parsehostname(hostname, &defparam, childdef.port);
 
-#ifndef STDMAIN
-
-	copyfilter(conf.filters, &srv);
-	conf.threadinit = 0;
-
-#endif
 	if (srv.srvsock == INVALID_SOCKET)
 	{
 
@@ -777,13 +710,7 @@ int MODULEMAINFUNC(int argc, char **argv)
 			newparam->hostname = (unsigned char *)mystrdup((char *)defparam.hostname);
 		clearstat(newparam);
 		newparam->clisock = new_sock;
-#ifndef STDMAIN
-		if (makefilters(&srv, newparam) > CONTINUE)
-		{
-			freeparam(newparam);
-			continue;
-		}
-#endif
+
 		newparam->prev = newparam->next = NULL;
 		error = 0;
 		pthread_mutex_lock(&srv.counter_mutex);
@@ -837,17 +764,6 @@ int MODULEMAINFUNC(int argc, char **argv)
 		memset(&defparam.sincl, 0, sizeof(defparam.sincl));
 		memset(&defparam.sincr, 0, sizeof(defparam.sincr));
 	}
-
-#ifndef STDMAIN
-	pthread_mutex_lock(&config_mutex);
-	if (srv.next)
-		srv.next->prev = srv.prev;
-	if (srv.prev)
-		srv.prev->next = srv.next;
-	else
-		conf.services = srv.next;
-	pthread_mutex_unlock(&config_mutex);
-#endif
 
 	if (!srv.silent)
 		srv.logfunc(&defparam, (unsigned char *)"Exiting thread");
@@ -948,25 +864,7 @@ void srvfree(struct srvparam *srv)
 	srv->service = S_ZOMBIE;
 	while (srv->child)
 		usleep(SLEEPTIME * 100);
-#ifndef STDMAIN
-	if (srv->filter)
-	{
-		while (srv->nfilters)
-		{
-			srv->nfilters--;
-			if (srv->filter[srv->nfilters].filter_close)
-			{
-				(*srv->filter[srv->nfilters].filter_close)(srv->filter[srv->nfilters].data);
-			}
-		}
-		myfree(srv->filter);
-	}
 
-	if (srv->acl)
-		freeacl(srv->acl);
-	if (srv->authfuncs)
-		freeauth(srv->authfuncs);
-#endif
 	pthread_mutex_destroy(&srv->counter_mutex);
 	if (srv->target)
 		myfree(srv->target);
@@ -990,30 +888,7 @@ void freeparam(struct clientparam *param)
 		return;
 	if (param->datfilterssrv)
 		myfree(param->datfilterssrv);
-#ifndef STDMAIN
-	if (param->reqfilters)
-		myfree(param->reqfilters);
-	if (param->hdrfilterscli)
-		myfree(param->hdrfilterscli);
-	if (param->hdrfilterssrv)
-		myfree(param->hdrfilterssrv);
-	if (param->predatfilters)
-		myfree(param->predatfilters);
-	if (param->datfilterscli)
-		myfree(param->datfilterscli);
-	if (param->filters)
-	{
-		if (param->nfilters)
-			while (param->nfilters--)
-			{
-				if (param->filters[param->nfilters].filter->filter_clear)
-					(*param->filters[param->nfilters].filter->filter_clear)(param->filters[param->nfilters].data);
-			}
-		myfree(param->filters);
-	}
-	if (conf.connlimiter && (param->res != 10 || param->remsock != INVALID_SOCKET))
-		stopconnlims(param);
-#endif
+
 	if (param->clibuf)
 		myfree(param->clibuf);
 	if (param->srvbuf)
@@ -1067,434 +942,13 @@ void freeparam(struct clientparam *param)
 	myfree(param);
 }
 
-#ifndef STDMAIN
-static void *itcopy(void *from, size_t size)
-{
-	void *ret;
-	if (!from)
-		return NULL;
-	ret = myalloc(size);
-	if (ret)
-		memcpy(ret, from, size);
-	return ret;
-}
-
-struct auth *copyauth(struct auth *authfuncs)
-{
-	struct auth *newauth = NULL;
-
-	newauth = itcopy(authfuncs, sizeof(struct auth));
-	for (authfuncs = newauth; authfuncs; authfuncs = authfuncs->next)
-	{
-		if (authfuncs->next)
-		{
-			authfuncs->next = itcopy(authfuncs->next, sizeof(struct auth));
-			if (!authfuncs->next)
-				break;
-		}
-	}
-	if (authfuncs)
-	{
-		freeauth(newauth);
-		return NULL;
-	}
-	return newauth;
-}
-
-struct ace *copyacl(struct ace *ac)
-{
-	struct ace *ret = NULL;
-	struct iplist *ipl;
-	struct portlist *pl;
-	struct userlist *ul;
-	struct chain *ch;
-	struct period *pel;
-	struct hostname *hst;
-
-	ret = itcopy(ac, sizeof(struct ace));
-	for (ac = ret; ac; ac = ac->next)
-	{
-		if (ac->src)
-		{
-			ac->src = itcopy(ac->src, sizeof(struct iplist));
-			if (!ac->src)
-				goto ERRORSRC;
-			for (ipl = ac->src; ipl->next; ipl = ipl->next)
-			{
-				ipl->next = itcopy(ipl->next, sizeof(struct iplist));
-				if (!ipl->next)
-					goto ERRORSRC;
-			}
-		}
-		if (ac->dst)
-		{
-			ac->dst = itcopy(ac->dst, sizeof(struct iplist));
-			if (!ac->dst)
-				goto ERRORDST;
-			for (ipl = ac->dst; ipl->next; ipl = ipl->next)
-			{
-				ipl->next = itcopy(ipl->next, sizeof(struct iplist));
-				if (!ipl->next)
-					goto ERRORDST;
-			}
-		}
-		if (ac->ports)
-		{
-			ac->ports = itcopy(ac->ports, sizeof(struct portlist));
-			if (!ac->ports)
-				goto ERRORPORTS;
-			for (pl = ac->ports; pl->next; pl = pl->next)
-			{
-				pl->next = itcopy(pl->next, sizeof(struct portlist));
-				if (!pl->next)
-					goto ERRORPORTS;
-			}
-		}
-		if (ac->periods)
-		{
-			ac->periods = itcopy(ac->periods, sizeof(struct period));
-			if (!ac->periods)
-				goto ERRORPERIODS;
-			for (pel = ac->periods; pel->next; pel = pel->next)
-			{
-				pel->next = itcopy(pel->next, sizeof(struct period));
-				if (!pel->next)
-					goto ERRORPERIODS;
-			}
-		}
-		if (ac->users)
-		{
-			ac->users = itcopy(ac->users, sizeof(struct userlist));
-			if (!ac->users)
-				goto ERRORUSERS;
-			for (ul = ac->users; ul; ul = ul->next)
-			{
-				if (ul->user)
-				{
-					ul->user = (unsigned char *)mystrdup((char *)ul->user);
-					if (!ul->user)
-					{
-						ul->next = NULL;
-						goto ERRORUSERS;
-					}
-				}
-				if (ul->next)
-				{
-					ul->next = itcopy(ul->next, sizeof(struct userlist));
-					if (!ul->next)
-						goto ERRORUSERS;
-				}
-			}
-		}
-		if (ac->dstnames)
-		{
-			ac->dstnames = itcopy(ac->dstnames, sizeof(struct hostname));
-			if (!ac->dstnames)
-				goto ERRORDSTNAMES;
-			for (hst = ac->dstnames; hst; hst = hst->next)
-			{
-				if (hst->name)
-				{
-					hst->name = (unsigned char *)mystrdup((char *)hst->name);
-					if (!hst->name)
-					{
-						hst->next = NULL;
-						goto ERRORDSTNAMES;
-					}
-				}
-				if (hst->next)
-				{
-					hst->next = itcopy(hst->next, sizeof(struct hostname));
-					if (!hst->next)
-						goto ERRORDSTNAMES;
-				}
-			}
-		}
-		if (ac->chains)
-		{
-			ac->chains = itcopy(ac->chains, sizeof(struct chain));
-			if (!ac->chains)
-				goto ERRORCHAINS;
-			for (ch = ac->chains; ch; ch = ch->next)
-			{
-				if (ch->extuser)
-				{
-					ch->extuser = (unsigned char *)mystrdup((char *)ch->extuser);
-					if (!ch->extuser)
-					{
-						ch->extpass = NULL;
-						ch->exthost = NULL;
-						ch->next = NULL;
-						goto ERRORCHAINS;
-					}
-				}
-				if (ch->extpass)
-				{
-					ch->extpass = (unsigned char *)mystrdup((char *)ch->extpass);
-					if (!ch->extpass)
-					{
-						ch->exthost = NULL;
-						ch->next = NULL;
-						goto ERRORCHAINS;
-					}
-				}
-				if (ch->exthost)
-				{
-					ch->exthost = (unsigned char *)mystrdup((char *)ch->exthost);
-					if (!ch->exthost)
-					{
-						ch->next = NULL;
-						goto ERRORCHAINS;
-					}
-				}
-				if (ch->next)
-				{
-					ch->next = itcopy(ch->next, sizeof(struct chain));
-					if (!ch->next)
-						goto ERRORNEXT;
-				}
-			}
-		}
-		if (ac->next)
-		{
-			ac->next = itcopy(ac->next, sizeof(struct ace));
-			if (!ac->next)
-				goto ERRORCHAINS;
-		}
-	}
-	if (!ac)
-		return ret;
-ERRORSRC:
-	ac->dst = NULL;
-ERRORDST:
-	ac->ports = NULL;
-ERRORPORTS:
-	ac->periods = NULL;
-ERRORPERIODS:
-	ac->users = NULL;
-ERRORUSERS:
-	ac->dstnames = NULL;
-ERRORDSTNAMES:
-	ac->chains = NULL;
-ERRORCHAINS:
-	ac->next = NULL;
-ERRORNEXT:
-	freeacl(ret);
-	return NULL;
-}
-
-void copyfilter(struct filter *filter, struct srvparam *srv)
-{
-	int nfilters = 0;
-
-	if (!filter)
-		return;
-	for (srv->filter = filter; srv->filter; srv->filter = srv->filter->next)
-		nfilters++;
-	srv->filter = myalloc(sizeof(struct filter) * nfilters);
-	if (!srv->filter)
-		return;
-
-	for (; filter; filter = filter->next)
-	{
-		void *data = NULL;
-
-		if (!filter->filter_open || !(data = (*filter->filter_open)(filter->data, srv)))
-			continue;
-
-		srv->filter[srv->nfilters] = *filter;
-		srv->filter[srv->nfilters].data = data;
-		if (srv->nfilters > 0)
-			srv->filter[srv->nfilters - 1].next = srv->filter + srv->nfilters;
-		srv->nfilters++;
-		if (filter->filter_request)
-			srv->nreqfilters++;
-		if (filter->filter_header_srv)
-			srv->nhdrfilterssrv++;
-		if (filter->filter_header_cli)
-			srv->nhdrfilterscli++;
-		if (filter->filter_predata)
-			srv->npredatfilters++;
-		if (filter->filter_data_srv)
-			srv->ndatfilterssrv++;
-		if (filter->filter_data_cli)
-			srv->ndatfilterscli++;
-	}
-}
-
-FILTER_ACTION makefilters(struct srvparam *srv, struct clientparam *param)
-{
-	FILTER_ACTION res = PASS;
-	FILTER_ACTION action;
-	int i;
-
-	if (!srv->nfilters)
-		return PASS;
-
-	if (!(param->filters = myalloc(sizeof(struct filterp) * srv->nfilters)) ||
-		(srv->nreqfilters && !(param->reqfilters = myalloc(sizeof(struct filterp *) * srv->nreqfilters))) ||
-		(srv->nhdrfilterssrv && !(param->hdrfilterssrv = myalloc(sizeof(struct filterp *) * srv->nhdrfilterssrv))) ||
-		(srv->nhdrfilterscli && !(param->hdrfilterscli = myalloc(sizeof(struct filterp *) * srv->nhdrfilterscli))) ||
-		(srv->npredatfilters && !(param->predatfilters = myalloc(sizeof(struct filterp *) * srv->npredatfilters))) ||
-		(srv->ndatfilterssrv && !(param->datfilterssrv = myalloc(sizeof(struct filterp *) * srv->ndatfilterssrv))) ||
-		(srv->ndatfilterscli && !(param->datfilterscli = myalloc(sizeof(struct filterp *) * srv->ndatfilterscli))))
-	{
-		param->res = 21;
-		return REJECT;
-	}
-
-	for (i = 0; i < srv->nfilters; i++)
-	{
-		if (!srv->filter[i].filter_client)
-			continue;
-		action = (*srv->filter[i].filter_client)(srv->filter[i].data, param, &param->filters[param->nfilters].data);
-		if (action == PASS)
-			continue;
-		if (action > CONTINUE)
-			return action;
-		param->filters[param->nfilters].filter = srv->filter + i;
-		if (srv->filter[i].filter_request)
-			param->reqfilters[param->nreqfilters++] = param->filters + param->nfilters;
-		if (srv->filter[i].filter_header_cli)
-			param->hdrfilterscli[param->nhdrfilterscli++] = param->filters + param->nfilters;
-		if (srv->filter[i].filter_header_srv)
-			param->hdrfilterssrv[param->nhdrfilterssrv++] = param->filters + param->nfilters;
-		if (srv->filter[i].filter_predata)
-			param->predatfilters[param->npredatfilters++] = param->filters + param->nfilters;
-		if (srv->filter[i].filter_data_cli)
-			param->datfilterscli[param->ndatfilterscli++] = param->filters + param->nfilters;
-		if (srv->filter[i].filter_data_srv)
-			param->datfilterssrv[param->ndatfilterssrv++] = param->filters + param->nfilters;
-		param->nfilters++;
-	}
-	return res;
-}
-
-void *itfree(void *data, void *retval)
-{
-	myfree(data);
-	return retval;
-}
-
-void freeauth(struct auth *authfuncs)
-{
-	for (; authfuncs; authfuncs = (struct auth *)itfree(authfuncs, authfuncs->next))
-		;
-}
-
-void freeacl(struct ace *ac)
-{
-	struct iplist *ipl;
-	struct portlist *pl;
-	struct userlist *ul;
-	struct chain *ch;
-	struct period *pel;
-	struct hostname *hst;
-	for (; ac; ac = (struct ace *)itfree(ac, ac->next))
-	{
-		for (ipl = ac->src; ipl; ipl = (struct iplist *)itfree(ipl, ipl->next))
-			;
-		for (ipl = ac->dst; ipl; ipl = (struct iplist *)itfree(ipl, ipl->next))
-			;
-		for (pl = ac->ports; pl; pl = (struct portlist *)itfree(pl, pl->next))
-			;
-		for (pel = ac->periods; pel; pel = (struct period *)itfree(pel, pel->next))
-			;
-		for (ul = ac->users; ul; ul = (struct userlist *)itfree(ul, ul->next))
-		{
-			if (ul->user)
-				myfree(ul->user);
-		}
-		for (hst = ac->dstnames; hst; hst = (struct hostname *)itfree(hst, hst->next))
-		{
-			if (hst->name)
-				myfree(hst->name);
-		}
-		for (ch = ac->chains; ch; ch = (struct chain *)itfree(ch, ch->next))
-		{
-			if (ch->extuser)
-				myfree(ch->extuser);
-			if (ch->extpass)
-				myfree(ch->extpass);
-			if (ch->exthost)
-				myfree(ch->exthost);
-		}
-	}
-}
-
-FILTER_ACTION handlereqfilters(struct clientparam *param, unsigned char **buf_p, int *bufsize_p, int offset, int *length_p)
-{
-	FILTER_ACTION action;
-	int i;
-
-	for (i = 0; i < param->nreqfilters; i++)
-	{
-		action = (*param->reqfilters[i]->filter->filter_request)(param->reqfilters[i]->data, param, buf_p, bufsize_p, offset, length_p);
-		if (action != CONTINUE)
-			return action;
-	}
-	return PASS;
-}
-
-FILTER_ACTION handlehdrfilterssrv(struct clientparam *param, unsigned char **buf_p, int *bufsize_p, int offset, int *length_p)
-{
-	FILTER_ACTION action;
-	int i;
-
-	for (i = 0; i < param->nhdrfilterssrv; i++)
-	{
-		action = (*param->hdrfilterssrv[i]->filter->filter_header_srv)(param->hdrfilterssrv[i]->data, param, buf_p, bufsize_p, offset, length_p);
-		if (action != CONTINUE)
-			return action;
-	}
-	return PASS;
-}
-
-FILTER_ACTION handlehdrfilterscli(struct clientparam *param, unsigned char **buf_p, int *bufsize_p, int offset, int *length_p)
-{
-	FILTER_ACTION action;
-	int i;
-
-	for (i = 0; i < param->nhdrfilterscli; i++)
-	{
-		action = (*param->hdrfilterscli[i]->filter->filter_header_cli)(param->hdrfilterscli[i]->data, param, buf_p, bufsize_p, offset, length_p);
-		if (action != CONTINUE)
-			return action;
-	}
-	return PASS;
-}
-
-#endif
-
 FILTER_ACTION handlepredatflt(struct clientparam *cparam)
 {
-#ifndef STDMAIN
-	FILTER_ACTION action;
-	int i;
-
-	for (i = 0; i < cparam->npredatfilters; i++)
-	{
-		action = (*cparam->predatfilters[i]->filter->filter_predata)(cparam->predatfilters[i]->data, cparam);
-		if (action != CONTINUE)
-			return action;
-	}
-#endif
 	return PASS;
 }
 
 FILTER_ACTION handledatfltcli(struct clientparam *cparam, unsigned char **buf_p, int *bufsize_p, int offset, int *length_p)
 {
-#ifndef STDMAIN
-	FILTER_ACTION action;
-	int i;
-
-	for (i = 0; i < cparam->ndatfilterscli; i++)
-	{
-		action = (*cparam->datfilterscli[i]->filter->filter_data_cli)(cparam->datfilterscli[i]->data, cparam, buf_p, bufsize_p, offset, length_p);
-		if (action != CONTINUE)
-			return action;
-	}
-#endif
 	return PASS;
 }
 

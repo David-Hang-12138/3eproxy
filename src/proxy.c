@@ -259,9 +259,6 @@ void *proxychild(struct clientparam *param)
 	char ftpbuf[FTPBUFSIZE];
 	int inftpbuf = 0;
 	int haveconnection = 0;
-#ifndef WITHMAIN
-	FILTER_ACTION action;
-#endif
 
 	if (param->remsock != INVALID_SOCKET)
 		haveconnection = 1;
@@ -429,105 +426,8 @@ void *proxychild(struct clientparam *param)
 		do
 		{
 			buf[inbuf + i] = 0;
-/*printf("Got: %s\n", buf+inbuf);*/
-#ifndef WITHMAIN
-			if (i > 25 && !param->srv->transparent && (!strncasecmp((char *)(buf + inbuf), "proxy-authorization", 19)))
-			{
-				sb = (unsigned char *)strchr((char *)(buf + inbuf), ':');
-				if (!sb)
-					continue;
-				++sb;
-				while (isspace(*sb))
-					sb++;
-				if (!*sb)
-					continue;
-				if (!strncasecmp((char *)sb, "basic", 5))
-				{
-					sb += 5;
-					while (isspace(*sb))
-						sb++;
-					i = de64(sb, username, 255);
-					if (i <= 0)
-						continue;
-					username[i] = 0;
-					sb = (unsigned char *)strchr((char *)username, ':');
-					if (sb)
-					{
-						*sb = 0;
-						if (param->password)
-							myfree(param->password);
-						param->password = (unsigned char *)mystrdup((char *)sb + 1);
-						param->pwtype = 0;
-					}
-					if (param->username)
-						myfree(param->username);
-					param->username = (unsigned char *)mystrdup((char *)username);
-					continue;
-				}
-#ifndef NOCRYPT
-				if (param->srv->usentlm && !strncasecmp((char *)sb, "ntlm", 4))
-				{
-					sb += 4;
-					while (isspace(*sb))
-						sb++;
-					i = de64(sb, username, 1023);
-					if (i <= 16)
-						continue;
-					username[i] = 0;
-					if (strncasecmp((char *)username, "NTLMSSP", 8))
-						continue;
-					if (username[8] == 1)
-					{
-						while ((i = sockgetlinebuf(param, CLIENT, buf, BUFSIZE - 1, '\n', conf.timeouts[STRING_S])) > 2)
-						{
-							if (i > 15 && (!strncasecmp((char *)(buf), "content-length", 14)))
-							{
-								buf[i] = 0;
-								sscanf((char *)buf + 15, "%" PRINTF_INT64_MODIFIER "u", &contentlength64);
-							}
-						}
-						while (contentlength64 > 0 && (i = sockgetlinebuf(param, CLIENT, buf, (BUFSIZE < contentlength64) ? BUFSIZE - 1 : (int)contentlength64, '\n', conf.timeouts[STRING_S])) > 0)
-						{
-							if ((uint64_t)i > contentlength64)
-								break;
-							contentlength64 -= i;
-						}
-						contentlength64 = 0;
-						if (param->password)
-							myfree(param->password);
-						param->password = myalloc(32);
-						param->pwtype = 2;
-						i = (int)strlen(proxy_stringtable[13]);
-						memcpy(buf, proxy_stringtable[13], i);
-						genchallenge(param, (char *)param->password, (char *)buf + i);
-						memcpy(buf + strlen((char *)buf), "\r\n\r\n", 5);
-						socksend(param->clisock, buf, (int)strlen((char *)buf), conf.timeouts[STRING_S]);
-						ckeepalive = keepalive = 1;
-						goto REQUESTEND;
-					}
-					if (username[8] == 3 && param->pwtype == 2 && i >= 80)
-					{
-						unsigned offset, len;
+			/*printf("Got: %s\n", buf+inbuf);*/
 
-						len = username[20] + (((unsigned)username[21]) << 8);
-						offset = username[24] + (((unsigned)username[25]) << 8);
-						if (len != 24 || len + offset > (unsigned)i)
-							continue;
-						memcpy(param->password + 8, username + offset, 24);
-						len = username[36] + (((unsigned)username[37]) << 8);
-						offset = username[40] + (((unsigned)username[41]) << 8);
-						if (len > 255 || len + offset > (unsigned)i)
-							continue;
-						if (param->username)
-							myfree(param->username);
-						unicode2text((char *)username + offset, (char *)username + offset, (len >> 1));
-						param->username = (unsigned char *)mystrdup((char *)username + offset);
-					}
-					continue;
-				}
-#endif
-			}
-#endif
 			if (!isconnect && ((i > 25 && !strncasecmp((char *)(buf + inbuf), "proxy-connection:", 17)) ||
 							   (i > 16 && (!strncasecmp((char *)(buf + inbuf), "connection:", 11)))))
 			{
@@ -671,65 +571,6 @@ void *proxychild(struct clientparam *param)
 			if ((res = (*param->srv->authfunc)(param)))
 				RETURN(res);
 		}
-
-#ifndef WITHMAIN
-
-		action = handlereqfilters(param, &req, &reqbufsize, 0, &reqsize);
-		if (action == HANDLED)
-		{
-			RETURN(0);
-		}
-		if (action != PASS)
-			RETURN(517);
-		action = handlehdrfilterscli(param, &buf, &bufsize, 0, &inbuf);
-		if (action == HANDLED)
-		{
-			RETURN(0);
-		}
-		if (action != PASS)
-			RETURN(517);
-		param->nolongdatfilter = 0;
-
-		if (isconnect && param->redirtype != R_HTTP)
-		{
-			socksend(param->clisock, (unsigned char *)proxy_stringtable[8], (int)strlen(proxy_stringtable[8]), conf.timeouts[STRING_S]);
-		}
-
-		if (param->npredatfilters)
-		{
-			action = handlepredatflt(param);
-			if (action == HANDLED)
-			{
-				RETURN(0);
-			}
-			if (action != PASS)
-				RETURN(19);
-		}
-
-		if (conf.filtermaxsize && contentlength64 > (uint64_t)conf.filtermaxsize)
-		{
-			param->nolongdatfilter = 1;
-		}
-		else if (param->ndatfilterscli > 0 && contentlength64 > 0)
-		{
-			uint64_t newlen64;
-			newlen64 = sockfillbuffcli(param, (unsigned long)contentlength64, CONNECTION_S);
-			if (newlen64 == contentlength64)
-			{
-				action = handledatfltcli(param, &param->clibuf, (int *)&param->clibufsize, 0, (int *)&param->cliinbuf);
-				if (action == HANDLED)
-				{
-					RETURN(0);
-				}
-				if (action != PASS)
-					RETURN(517);
-				contentlength64 = param->cliinbuf;
-				param->nolongdatfilter = 1;
-			}
-			sprintf((char *)buf + strlen((char *)buf), "Content-Length: %" PRINTF_INT64_MODIFIER "u\r\n", contentlength64);
-		}
-
-#endif
 
 		if (ftp && param->redirtype != R_HTTP)
 		{
@@ -1280,51 +1121,7 @@ void *proxychild(struct clientparam *param)
 		{
 			RETURN(522);
 		}
-#ifndef WITHMAIN
-		action = handlehdrfilterssrv(param, &buf, &bufsize, 0, &inbuf);
-		if (action == HANDLED)
-		{
-			RETURN(0);
-		}
-		if (action != PASS)
-			RETURN(517);
 
-		param->nolongdatfilter = 0;
-
-		if (conf.filtermaxsize && contentlength64 > (uint64_t)conf.filtermaxsize)
-		{
-			param->nolongdatfilter = 1;
-		}
-		else if (param->ndatfilterssrv > 0 && contentlength64 > 0 && param->operation != HTTP_HEAD && res != 204 && res != 304)
-		{
-			uint64_t newlen;
-			newlen = (uint64_t)sockfillbuffsrv(param, (unsigned long)contentlength64, CONNECTION_S);
-			if (newlen == contentlength64)
-			{
-				action = handlepredatflt(param);
-				if (action == HANDLED)
-				{
-					RETURN(0);
-				}
-				if (action != PASS)
-					RETURN(19);
-				action = handledatfltsrv(param, &param->srvbuf, (int *)&param->srvbufsize, 0, (int *)&param->srvinbuf);
-				param->nolongdatfilter = 1;
-				if (action == HANDLED)
-				{
-					RETURN(0);
-				}
-				if (action != PASS)
-					RETURN(517);
-				contentlength64 = param->srvinbuf;
-				sprintf((char *)buf + strlen((char *)buf), "Content-Length: %" PRINTF_INT64_MODIFIER "u\r\n", contentlength64);
-				hascontent = 1;
-			}
-		}
-		if (contentlength64 > 0 && hascontent != 1)
-			ckeepalive = 0;
-#else
-#endif
 		if (!isconnect || param->operation)
 		{
 			if (authenticate && !param->transparent)
@@ -1495,7 +1292,6 @@ CLEANRET:
 	return (NULL);
 }
 
-#ifdef WITHMAIN
 struct proxydef childdef = {
 	proxychild,
 	3128,
@@ -1504,4 +1300,3 @@ struct proxydef childdef = {
 	"-a - anonymous proxy\r\n"
 	"-a1 - anonymous proxy with random client IP spoofing\r\n"};
 #include "proxymain.c"
-#endif

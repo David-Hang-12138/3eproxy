@@ -25,6 +25,8 @@ extern "C"
 
 #ifndef _WIN32
 #include <sys/socket.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -749,9 +751,9 @@ typedef int (*PLUGINFUNC)(struct pluginlink *pluginlink, int argc, char **argv);
 		int(WINAPI *_shutdown)(SOCKET s, int how);
 		int(WINAPI *_closesocket)(SOCKET s);
 #else
-	SOCKET (*_socket)
+	SOCKET(*_socket)
 	(int domain, int type, int protocol);
-	SOCKET (*_accept)
+	SOCKET(*_accept)
 	(SOCKET s, struct sockaddr *addr, socklen_t *addrlen);
 	int (*_bind)(SOCKET s, const struct sockaddr *addr, socklen_t addrlen);
 	int (*_listen)(SOCKET s, int backlog);
